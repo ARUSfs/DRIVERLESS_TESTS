@@ -33,6 +33,17 @@ class PerceptionTest : public ::testing::Test
 protected:
   std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster;
 
+  rclcpp::Node::SharedPtr node;
+  std::unordered_set<std::string> allowed_topics;
+  sensor_msgs::msg::PointCloud2 final_map;
+  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_subscription;
+
+  bool map_received = false;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr transformed_map_pub;
+
   void SetUp() override
   {
 
@@ -40,6 +51,24 @@ protected:
     // Create a test node
     node = std::make_shared<rclcpp::Node>("rosbag_playback_test");
 
+    create_static_tf();
+
+    // Initialize Variables
+    map_received = false;
+
+    // Set up a subscription to /perception/map
+    map_subscription = node->create_subscription<sensor_msgs::msg::PointCloud2>(
+        "/perception/map",
+        10,
+        std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
+
+    tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+    transformed_map_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/perception/test/final_map", 10);
+  }
+
+  void create_static_tf()
+  {
     static_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
 
     // Create static transform: slam/vehicle → rslidar
@@ -59,19 +88,6 @@ protected:
     static_transform.transform.rotation.w = 1.0;
 
     static_broadcaster->sendTransform(static_transform);
-
-    // Initialize Variables
-    map_received = false;
-
-    // Set up a subscription to /perception/map
-    map_subscription = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-        "/perception/map",
-        10,
-        std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
-
-    tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
-    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-    transformed_map_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/perception/test/final_map", 10);
   }
 
   void TearDown() override
@@ -98,27 +114,7 @@ protected:
       sensor_msgs::msg::PointCloud2 transformed_cloud;
       tf2::doTransform(final_map, transformed_cloud, transform_stamped);
 
-      // Configure the cropping filter
-
-      double Mx = 30;
-      double My = 15;
-      double Mz = 0.5;
-
-      pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZI>);
-      pcl::fromROSMsg(transformed_cloud, *pcl_cloud);
-
-      pcl::CropBox<pcl::PointXYZI> crop_box_filter;
-      crop_box_filter.setInputCloud(pcl_cloud);
-      crop_box_filter.setMin(Eigen::Vector4f(0, -My, -100.0, 1.0));
-      crop_box_filter.setMax(Eigen::Vector4f(Mx, My, Mz, 1.0));
-
-      // Store the cropped cloud
-      crop_box_filter.filter(*pcl_cloud);
-
-      pcl::toROSMsg(*pcl_cloud, transformed_cloud);
-
-      transformed_cloud.header.frame_id = "rslidar";
-      transformed_cloud.header.stamp = node->now();
+      cropping(transformed_cloud);
 
       transformed_map_pub->publish(transformed_cloud);
       RCLCPP_INFO(node->get_logger(), "Published transformed final map.");
@@ -128,6 +124,31 @@ protected:
       RCLCPP_WARN(node->get_logger(), "Could not transform final map: %s", ex.what());
       return;
     }
+  }
+
+  void cropping(sensor_msgs::msg::PointCloud2 &transformed_cloud)
+  {
+    // Configure the cropping filter
+
+    double Mx = 30;
+    double My = 15;
+    double Mz = 0.5;
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::fromROSMsg(transformed_cloud, *pcl_cloud);
+
+    pcl::CropBox<pcl::PointXYZI> crop_box_filter;
+    crop_box_filter.setInputCloud(pcl_cloud);
+    crop_box_filter.setMin(Eigen::Vector4f(0, -My, -100.0, 1.0));
+    crop_box_filter.setMax(Eigen::Vector4f(Mx, My, Mz, 1.0));
+
+    // Store the cropped cloud
+    crop_box_filter.filter(*pcl_cloud);
+
+    pcl::toROSMsg(*pcl_cloud, transformed_cloud);
+
+    transformed_cloud.header.frame_id = "rslidar";
+    transformed_cloud.header.stamp = node->now();
   }
 
   void play_rosbag(const std::string &bag_path)
@@ -220,17 +241,6 @@ protected:
       }
     }
   }
-
-  rclcpp::Node::SharedPtr node;
-  std::unordered_set<std::string> allowed_topics;
-  sensor_msgs::msg::PointCloud2 final_map;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_subscription;
-
-  bool map_received = false;
-
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr transformed_map_pub;
 };
 
 TEST_F(PerceptionTest, FilterAndPublishMcapRosbagWithMapWait)
