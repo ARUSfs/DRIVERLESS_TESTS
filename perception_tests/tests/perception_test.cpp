@@ -12,6 +12,11 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
+#include <pcl/filters/crop_box.h>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
+
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
@@ -20,15 +25,40 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
+#include <tf2_ros/static_transform_broadcaster.h>
+#include <geometry_msgs/msg/transform_stamped.hpp>
+
 class PerceptionTest : public ::testing::Test
 {
 protected:
+  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster;
+
   void SetUp() override
   {
 
     rclcpp::init(0, nullptr);
     // Create a test node
     node = std::make_shared<rclcpp::Node>("rosbag_playback_test");
+
+    static_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
+
+    // Create static transform: slam/vehicle → rslidar
+    geometry_msgs::msg::TransformStamped static_transform;
+    static_transform.header.stamp = node->now();
+    static_transform.header.frame_id = "slam/vehicle";
+    static_transform.child_frame_id = "rslidar";
+
+    // Set the relative position of rslidar on the vehicle (example values)
+    static_transform.transform.translation.x = 1.5;
+    static_transform.transform.translation.y = 0.0;
+    static_transform.transform.translation.z = 0.0;
+
+    static_transform.transform.rotation.x = 0.0;
+    static_transform.transform.rotation.y = 0.0;
+    static_transform.transform.rotation.z = 0.0;
+    static_transform.transform.rotation.w = 1.0;
+
+    static_broadcaster->sendTransform(static_transform);
 
     // Initialize Variables
     map_received = false;
@@ -63,10 +93,32 @@ protected:
     try
     {
       geometry_msgs::msg::TransformStamped transform_stamped =
-          tf_buffer->lookupTransform("arussim/world", "slam/vehicle", rclcpp::Time(0), tf2::durationFromSec(1.0));
+          tf_buffer->lookupTransform("rslidar", "arussim/world", rclcpp::Time(0), tf2::durationFromSec(1.0));
 
       sensor_msgs::msg::PointCloud2 transformed_cloud;
       tf2::doTransform(final_map, transformed_cloud, transform_stamped);
+
+      // Configure the cropping filter
+
+      double Mx = 30;
+      double My = 15;
+      double Mz = 0.5;
+
+      pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZI>);
+      pcl::fromROSMsg(transformed_cloud, *pcl_cloud);
+
+      pcl::CropBox<pcl::PointXYZI> crop_box_filter;
+      crop_box_filter.setInputCloud(pcl_cloud);
+      crop_box_filter.setMin(Eigen::Vector4f(0, -My, -100.0, 1.0));
+      crop_box_filter.setMax(Eigen::Vector4f(Mx, My, Mz, 1.0));
+
+      // Store the cropped cloud
+      crop_box_filter.filter(*pcl_cloud);
+
+      pcl::toROSMsg(*pcl_cloud, transformed_cloud);
+
+      transformed_cloud.header.frame_id = "rslidar";
+      transformed_cloud.header.stamp = node->now();
 
       transformed_map_pub->publish(transformed_cloud);
       RCLCPP_INFO(node->get_logger(), "Published transformed final map.");
@@ -74,6 +126,7 @@ protected:
     catch (tf2::TransformException &ex)
     {
       RCLCPP_WARN(node->get_logger(), "Could not transform final map: %s", ex.what());
+      return;
     }
   }
 
