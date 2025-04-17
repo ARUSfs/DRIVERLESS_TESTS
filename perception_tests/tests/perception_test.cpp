@@ -15,14 +15,17 @@
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
-#include <condition_variable>
-#include <mutex>
+
+#include <tf2_ros/transform_listener.h>
+#include <tf2_ros/buffer.h>
+#include <tf2_sensor_msgs/tf2_sensor_msgs.hpp>
 
 class PerceptionTest : public ::testing::Test
 {
 protected:
   void SetUp() override
   {
+
     rclcpp::init(0, nullptr);
     // Create a test node
     node = std::make_shared<rclcpp::Node>("rosbag_playback_test");
@@ -35,6 +38,10 @@ protected:
         "/perception/map",
         10,
         std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
+
+    tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+    transformed_map_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/perception/test/final_map", 10);
   }
 
   void TearDown() override
@@ -46,6 +53,28 @@ protected:
   {
     ASSERT_FALSE(detected_cones.data.empty()) << "Cone data was empty";
     map_received = true;
+
+    if (final_map.data.empty())
+    {
+      RCLCPP_WARN(node->get_logger(), "Final map not loaded yet, skipping transform.");
+      return;
+    }
+
+    try
+    {
+      geometry_msgs::msg::TransformStamped transform_stamped =
+          tf_buffer->lookupTransform("arussim/world", "slam/vehicle", rclcpp::Time(0), tf2::durationFromSec(1.0));
+
+      sensor_msgs::msg::PointCloud2 transformed_cloud;
+      tf2::doTransform(final_map, transformed_cloud, transform_stamped);
+
+      transformed_map_pub->publish(transformed_cloud);
+      RCLCPP_INFO(node->get_logger(), "Published transformed final map.");
+    }
+    catch (tf2::TransformException &ex)
+    {
+      RCLCPP_WARN(node->get_logger(), "Could not transform final map: %s", ex.what());
+    }
   }
 
   void play_rosbag(const std::string &bag_path)
@@ -145,6 +174,10 @@ protected:
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_subscription;
 
   bool map_received = false;
+
+  std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+  std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr transformed_map_pub;
 };
 
 TEST_F(PerceptionTest, FilterAndPublishMcapRosbagWithMapWait)
