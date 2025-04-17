@@ -21,7 +21,6 @@
 class PerceptionTest : public ::testing::Test
 {
 protected:
-  // Executed on each test start
   void SetUp() override
   {
     rclcpp::init(0, nullptr);
@@ -35,13 +34,20 @@ protected:
     map_subscription = node->create_subscription<sensor_msgs::msg::PointCloud2>(
         "/perception/map",
         10,
-        [this](sensor_msgs::msg::PointCloud2 msg) {});
+        std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
   }
 
   void TearDown() override
   {
     rclcpp::shutdown();
   }
+
+  void perception_callback(sensor_msgs::msg::PointCloud2 detected_cones)
+  {
+    ASSERT_FALSE(detected_cones.data.empty()) << "Cone data was empty";
+    map_received = true;
+  }
+
   void play_rosbag(const std::string &bag_path)
   {
 
@@ -54,6 +60,7 @@ protected:
     rosbag2_cpp::ConverterOptions converter_options{"cdr", "cdr"};
     reader.open(storage_options, converter_options);
 
+    // Preregister Topics and Types
     auto topics_and_types = reader.get_all_topics_and_types();
     std::unordered_map<std::string, std::string> topic_type_map;
     for (const auto &info : topics_and_types)
@@ -63,6 +70,7 @@ protected:
 
     std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers;
 
+    // Set up the executor
     rclcpp::executors::SingleThreadedExecutor executor;
     executor.add_node(node);
 
@@ -70,6 +78,27 @@ protected:
     {
       auto bag_msg = reader.read_next();
       const std::string &topic = bag_msg->topic_name;
+
+      // Skip until the final map has information
+      if (final_map.data.empty())
+      {
+
+        if (topic == "/slam/final_map")
+        {
+
+          // Deserialize to actual PointCloud2 message
+          rclcpp::SerializedMessage serialized_msg(*bag_msg->serialized_data);
+          sensor_msgs::msg::PointCloud2 msg;
+          rclcpp::Serialization<sensor_msgs::msg::PointCloud2> serializer;
+          serializer.deserialize_message(&serialized_msg, &msg);
+          // Save to final_map
+          final_map = msg;
+        }
+        else
+        {
+          continue;
+        }
+      }
 
       if (publishers.find(topic) == publishers.end())
       {
@@ -86,9 +115,7 @@ protected:
 
       rclcpp::SerializedMessage msg(*bag_msg->serialized_data);
       publishers[topic]->publish(msg);
-      RCLCPP_INFO(node->get_logger(), "Published message on %s", topic.c_str());
 
-      // If message was /rslidar_points, wait for /perception/map response
       if (topic == "/rslidar_points")
       {
         // Spin until /perception/map is received
@@ -114,6 +141,7 @@ protected:
 
   rclcpp::Node::SharedPtr node;
   std::unordered_set<std::string> allowed_topics;
+  sensor_msgs::msg::PointCloud2 final_map;
   rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_subscription;
 
   bool map_received = false;
