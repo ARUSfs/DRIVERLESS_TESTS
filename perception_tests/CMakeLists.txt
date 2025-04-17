@@ -16,14 +16,12 @@ find_package(rosbag2_storage REQUIRED)
 find_package(sensor_msgs REQUIRED)
 
 # Optional dependencies (uncomment if needed)
-# find_package(rclcpp_lifecycle REQUIRED)
 
-include_directories(include)
+# include_directories(include)
 
-
-install(DIRECTORY include/
-  DESTINATION include/
-)
+# install(DIRECTORY include/
+#   DESTINATION include/
+# )
 
 install(DIRECTORY data/
   DESTINATION share/${PROJECT_NAME}/data)
