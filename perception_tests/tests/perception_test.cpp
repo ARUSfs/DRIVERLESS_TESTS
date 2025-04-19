@@ -37,6 +37,7 @@
 class PerceptionTest : public ::testing::Test
 {
 protected:
+    // Variables
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster;
 
     rclcpp::Node::SharedPtr node;
@@ -53,6 +54,12 @@ protected:
     double total_detected_accuracy = 0.0;
     double total_expected_accuracy = 0.0;
     int evaluation_count = 0;
+
+    // Configuration
+
+    double kDistanceThreshold = 0.75;
+    double kMinExpectedAccuracy = 0.4;
+    double kMinDetectedAccuracy = 0.9;
 
     void SetUp() override
     {
@@ -118,7 +125,7 @@ protected:
             // Child process: run ros2 launch
             execlp("ros2", "ros2", "launch", "perception", "perception_launch.py", (char *)nullptr);
             std::cerr << "Failed to launch perception node\n";
-            std::_Exit(EXIT_FAILURE); // ensure child exits if execlp fails
+            std::_Exit(EXIT_FAILURE);
         }
         else if (perception_launch_pid < 0)
         {
@@ -135,8 +142,8 @@ protected:
     {
         if (perception_launch_pid > 0)
         {
-            kill(perception_launch_pid, SIGINT);        // send CTRL+C equivalent
-            waitpid(perception_launch_pid, nullptr, 0); // wait for clean shutdown
+            kill(perception_launch_pid, SIGINT);
+            waitpid(perception_launch_pid, nullptr, 0);
             perception_launch_pid = -1;
         }
     }
@@ -180,7 +187,6 @@ protected:
             std::vector<bool> expected_matched(expected_cloud->points.size(), false);
             int true_positive = 0;
             int false_positive = 0;
-            double distance_threshold = 0.75; // example threshold, tweak as needed
 
             for (const auto &det : detected_cloud->points)
             {
@@ -188,7 +194,7 @@ protected:
                 std::vector<float> dist(1);
                 if (kdtree.nearestKSearch(det, 1, idx, dist))
                 {
-                    if (dist[0] < distance_threshold && !expected_matched[idx[0]])
+                    if (dist[0] < kDistanceThreshold && !expected_matched[idx[0]])
                     {
                         expected_matched[idx[0]] = true;
                         true_positive++;
@@ -369,8 +375,8 @@ TEST_F(PerceptionTest, PerceptionAccuracyTest)
     RCLCPP_INFO(node->get_logger(), "Mean detected accuracy: %.2f%%", mean_detected_accuracy * 100);
     RCLCPP_INFO(node->get_logger(), "Mean expected accuracy: %.2f%%", mean_expected_accuracy * 100);
 
-    ASSERT_GE(mean_detected_accuracy, 0.9) << "Mean detection accuracy too low!";
-    ASSERT_GE(mean_expected_accuracy, 0.4) << "Mean expected accuracy too low!";
+    ASSERT_GE(mean_detected_accuracy, kMinDetectedAccuracy) << "Mean detection accuracy too low!";
+    ASSERT_GE(mean_expected_accuracy, kMinExpectedAccuracy) << "Mean expected accuracy too low!";
 }
 
 int main(int argc, char **argv)
