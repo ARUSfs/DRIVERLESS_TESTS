@@ -28,241 +28,313 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 
+#include <pcl/kdtree/kdtree_flann.h>
+
 class PerceptionTest : public ::testing::Test
 {
 protected:
-  std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> static_broadcaster;
 
-  rclcpp::Node::SharedPtr node;
-  std::unordered_set<std::string> allowed_topics;
-  sensor_msgs::msg::PointCloud2 final_map;
-  rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_subscription;
+    rclcpp::Node::SharedPtr node;
+    std::unordered_set<std::string> allowed_topics;
+    sensor_msgs::msg::PointCloud2 final_map;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr map_subscription;
 
-  bool map_received = false;
+    bool map_received = false;
 
-  std::shared_ptr<tf2_ros::Buffer> tf_buffer;
-  std::shared_ptr<tf2_ros::TransformListener> tf_listener;
-  rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr transformed_map_pub;
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr transformed_map_pub;
 
-  void SetUp() override
-  {
+    double total_detected_accuracy = 0.0;
+    double total_expected_accuracy = 0.0;
+    int evaluation_count = 0;
 
-    rclcpp::init(0, nullptr);
-    // Create a test node
-    node = std::make_shared<rclcpp::Node>("rosbag_playback_test");
-
-    create_static_tf();
-
-    // Initialize Variables
-    map_received = false;
-
-    // Set up a subscription to /perception/map
-    map_subscription = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-        "/perception/map",
-        10,
-        std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
-
-    tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
-    tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-    transformed_map_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/perception/test/final_map", 10);
-  }
-
-  void create_static_tf()
-  {
-    static_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
-
-    // Create static transform: slam/vehicle → rslidar
-    geometry_msgs::msg::TransformStamped static_transform;
-    static_transform.header.stamp = node->now();
-    static_transform.header.frame_id = "slam/vehicle";
-    static_transform.child_frame_id = "rslidar";
-
-    // Set the relative position of rslidar on the vehicle (example values)
-    static_transform.transform.translation.x = 1.5;
-    static_transform.transform.translation.y = 0.0;
-    static_transform.transform.translation.z = 0.0;
-
-    static_transform.transform.rotation.x = 0.0;
-    static_transform.transform.rotation.y = 0.0;
-    static_transform.transform.rotation.z = 0.0;
-    static_transform.transform.rotation.w = 1.0;
-
-    static_broadcaster->sendTransform(static_transform);
-  }
-
-  void TearDown() override
-  {
-    rclcpp::shutdown();
-  }
-
-  void perception_callback(sensor_msgs::msg::PointCloud2 detected_cones)
-  {
-    ASSERT_FALSE(detected_cones.data.empty()) << "Cone data was empty";
-    map_received = true;
-
-    if (final_map.data.empty())
+    void SetUp() override
     {
-      RCLCPP_WARN(node->get_logger(), "Final map not loaded yet, skipping transform.");
-      return;
-    }
 
-    try
-    {
-      geometry_msgs::msg::TransformStamped transform_stamped =
-          tf_buffer->lookupTransform("rslidar", "arussim/world", rclcpp::Time(0), tf2::durationFromSec(1.0));
+        rclcpp::init(0, nullptr);
+        // Create a test node
+        node = std::make_shared<rclcpp::Node>("rosbag_playback_test");
 
-      sensor_msgs::msg::PointCloud2 transformed_cloud;
-      tf2::doTransform(final_map, transformed_cloud, transform_stamped);
+        create_static_tf();
 
-      cropping(transformed_cloud);
-
-      transformed_map_pub->publish(transformed_cloud);
-      RCLCPP_INFO(node->get_logger(), "Published transformed final map.");
-    }
-    catch (tf2::TransformException &ex)
-    {
-      RCLCPP_WARN(node->get_logger(), "Could not transform final map: %s", ex.what());
-      return;
-    }
-  }
-
-  void cropping(sensor_msgs::msg::PointCloud2 &transformed_cloud)
-  {
-    // Configure the cropping filter
-
-    double Mx = 30;
-    double My = 15;
-    double Mz = 0.5;
-
-    pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZI>);
-    pcl::fromROSMsg(transformed_cloud, *pcl_cloud);
-
-    pcl::CropBox<pcl::PointXYZI> crop_box_filter;
-    crop_box_filter.setInputCloud(pcl_cloud);
-    crop_box_filter.setMin(Eigen::Vector4f(0, -My, -100.0, 1.0));
-    crop_box_filter.setMax(Eigen::Vector4f(Mx, My, Mz, 1.0));
-
-    // Store the cropped cloud
-    crop_box_filter.filter(*pcl_cloud);
-
-    pcl::toROSMsg(*pcl_cloud, transformed_cloud);
-
-    transformed_cloud.header.frame_id = "rslidar";
-    transformed_cloud.header.stamp = node->now();
-  }
-
-  void play_rosbag(const std::string &bag_path)
-  {
-
-    // Setup a rosbag reader
-    rosbag2_cpp::readers::SequentialReader reader;
-    rosbag2_storage::StorageOptions storage_options;
-    storage_options.uri = bag_path;
-    storage_options.storage_id = "mcap";
-
-    rosbag2_cpp::ConverterOptions converter_options{"cdr", "cdr"};
-    reader.open(storage_options, converter_options);
-
-    // Preregister Topics and Types
-    auto topics_and_types = reader.get_all_topics_and_types();
-    std::unordered_map<std::string, std::string> topic_type_map;
-    for (const auto &info : topics_and_types)
-    {
-      topic_type_map[info.name] = info.type;
-    }
-
-    std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers;
-
-    // Set up the executor
-    rclcpp::executors::SingleThreadedExecutor executor;
-    executor.add_node(node);
-
-    while (reader.has_next())
-    {
-      auto bag_msg = reader.read_next();
-      const std::string &topic = bag_msg->topic_name;
-
-      // Skip until the final map has information
-      if (final_map.data.empty())
-      {
-
-        if (topic == "/slam/final_map")
-        {
-
-          // Deserialize to actual PointCloud2 message
-          rclcpp::SerializedMessage serialized_msg(*bag_msg->serialized_data);
-          sensor_msgs::msg::PointCloud2 msg;
-          rclcpp::Serialization<sensor_msgs::msg::PointCloud2> serializer;
-          serializer.deserialize_message(&serialized_msg, &msg);
-          // Save to final_map
-          final_map = msg;
-        }
-        else
-        {
-          continue;
-        }
-      }
-
-      if (publishers.find(topic) == publishers.end())
-      {
-        auto it = topic_type_map.find(topic);
-        if (it == topic_type_map.end())
-        {
-          RCLCPP_WARN(node->get_logger(), "Unknown type for topic: %s", topic.c_str());
-          continue;
-        }
-
-        auto publisher = node->create_generic_publisher(topic, it->second, 10);
-        publishers[topic] = publisher;
-      }
-
-      rclcpp::SerializedMessage msg(*bag_msg->serialized_data);
-      publishers[topic]->publish(msg);
-
-      if (topic == "/rslidar_points")
-      {
-        // Spin until /perception/map is received
-        auto start = std::chrono::steady_clock::now();
-        int kTimeOut = 10;
-        while (!map_received &&
-               std::chrono::steady_clock::now() - start < std::chrono::seconds(kTimeOut))
-        {
-          executor.spin_some();
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-
-        if (!map_received)
-        {
-          FAIL() << "Timeout waiting for /perception/map response.";
-        }
-
-        // Reset
+        // Initialize Variables
         map_received = false;
-      }
+
+        // Set up a subscription to /perception/map
+        map_subscription = node->create_subscription<sensor_msgs::msg::PointCloud2>(
+            "/perception/map",
+            10,
+            std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
+
+        tf_buffer = std::make_shared<tf2_ros::Buffer>(node->get_clock());
+        tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+        transformed_map_pub = node->create_publisher<sensor_msgs::msg::PointCloud2>("/perception/test/final_map", 10);
     }
-  }
+
+    void create_static_tf()
+    {
+        static_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(node);
+
+        // Create static transform: slam/vehicle → rslidar
+        geometry_msgs::msg::TransformStamped static_transform;
+        static_transform.header.stamp = node->now();
+        static_transform.header.frame_id = "slam/vehicle";
+        static_transform.child_frame_id = "rslidar";
+
+        // Set the relative position of rslidar on the vehicle (example values)
+        static_transform.transform.translation.x = 1.5;
+        static_transform.transform.translation.y = 0.0;
+        static_transform.transform.translation.z = 0.0;
+
+        static_transform.transform.rotation.x = 0.0;
+        static_transform.transform.rotation.y = 0.0;
+        static_transform.transform.rotation.z = 0.0;
+        static_transform.transform.rotation.w = 1.0;
+
+        static_broadcaster->sendTransform(static_transform);
+    }
+
+    void TearDown() override
+    {
+        rclcpp::shutdown();
+    }
+
+    void perception_callback(sensor_msgs::msg::PointCloud2 detected_cones)
+    {
+        ASSERT_FALSE(detected_cones.data.empty()) << "Cone data was empty";
+        map_received = true;
+
+        if (final_map.data.empty())
+        {
+            RCLCPP_WARN(node->get_logger(), "Final map not loaded yet, skipping transform.");
+            return;
+        }
+
+        try
+        {
+            geometry_msgs::msg::TransformStamped transform_stamped =
+                tf_buffer->lookupTransform("rslidar", "arussim/world", rclcpp::Time(0), tf2::durationFromSec(1.0));
+
+            sensor_msgs::msg::PointCloud2 transformed_cloud;
+            tf2::doTransform(final_map, transformed_cloud, transform_stamped);
+
+            cropping(transformed_cloud);
+
+            // Convert to PCL
+            pcl::PointCloud<pcl::PointXYZ>::Ptr expected_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+            pcl::PointCloud<pcl::PointXYZ>::Ptr detected_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+            pcl::fromROSMsg(transformed_cloud, *expected_cloud);
+            pcl::fromROSMsg(detected_cones, *detected_cloud);
+
+            // Remove Z component: just zero it out to treat it as 2D
+            for (auto &pt : expected_cloud->points)
+                pt.z = 0;
+            for (auto &pt : detected_cloud->points)
+                pt.z = 0;
+
+            pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+            kdtree.setInputCloud(expected_cloud);
+
+            std::vector<bool> expected_matched(expected_cloud->points.size(), false);
+            int true_positive = 0;
+            int false_positive = 0;
+            double distance_threshold = 0.75; // example threshold, tweak as needed
+
+            for (const auto &det : detected_cloud->points)
+            {
+                std::vector<int> idx(1);
+                std::vector<float> dist(1);
+                if (kdtree.nearestKSearch(det, 1, idx, dist))
+                {
+                    if (dist[0] < distance_threshold && !expected_matched[idx[0]])
+                    {
+                        expected_matched[idx[0]] = true;
+                        true_positive++;
+                    }
+                    else
+                    {
+                        false_positive++;
+                    }
+                }
+                else
+                {
+                    false_positive++;
+                }
+            }
+
+            int total_detected = detected_cloud->points.size();
+            int total_expected = expected_cloud->points.size();
+            int false_negative = std::count(expected_matched.begin(), expected_matched.end(), false);
+
+            double detected_accuracy = total_detected > 0 ? static_cast<double>(true_positive) / total_detected : 0.0;
+            double expected_accuracy = total_expected > 0 ? static_cast<double>(true_positive) / total_expected : 0.0;
+
+            RCLCPP_INFO(node->get_logger(), "Detected accuracy: %.2f%%", detected_accuracy * 100);
+            RCLCPP_INFO(node->get_logger(), "Expected accuracy: %.2f%%", expected_accuracy * 100);
+
+            // Publish result
+            transformed_map_pub->publish(transformed_cloud);
+
+            total_detected_accuracy += detected_accuracy;
+            total_expected_accuracy += expected_accuracy;
+            evaluation_count++;
+        }
+        catch (tf2::TransformException &ex)
+        {
+            RCLCPP_WARN(node->get_logger(), "Could not transform final map: %s", ex.what());
+            return;
+        }
+    }
+
+    void cropping(sensor_msgs::msg::PointCloud2 &transformed_cloud)
+    {
+        // Configure the cropping filter
+
+        double Mx = 30;
+        double My = 15;
+        double Mz = 0.5;
+
+        pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZI>);
+        pcl::fromROSMsg(transformed_cloud, *pcl_cloud);
+
+        pcl::CropBox<pcl::PointXYZI> crop_box_filter;
+        crop_box_filter.setInputCloud(pcl_cloud);
+        crop_box_filter.setMin(Eigen::Vector4f(0, -My, -100.0, 1.0));
+        crop_box_filter.setMax(Eigen::Vector4f(Mx, My, Mz, 1.0));
+
+        // Store the cropped cloud
+        crop_box_filter.filter(*pcl_cloud);
+
+        pcl::toROSMsg(*pcl_cloud, transformed_cloud);
+
+        transformed_cloud.header.frame_id = "rslidar";
+        transformed_cloud.header.stamp = node->now();
+    }
+
+    void play_rosbag(const std::string &bag_path)
+    {
+
+        // Setup a rosbag reader
+        rosbag2_cpp::readers::SequentialReader reader;
+        rosbag2_storage::StorageOptions storage_options;
+        storage_options.uri = bag_path;
+        storage_options.storage_id = "mcap";
+
+        rosbag2_cpp::ConverterOptions converter_options{"cdr", "cdr"};
+        reader.open(storage_options, converter_options);
+
+        // Preregister Topics and Types
+        auto topics_and_types = reader.get_all_topics_and_types();
+        std::unordered_map<std::string, std::string> topic_type_map;
+        for (const auto &info : topics_and_types)
+        {
+            topic_type_map[info.name] = info.type;
+        }
+
+        std::unordered_map<std::string, rclcpp::GenericPublisher::SharedPtr> publishers;
+
+        // Set up the executor
+        rclcpp::executors::SingleThreadedExecutor executor;
+        executor.add_node(node);
+
+        while (reader.has_next())
+        {
+            auto bag_msg = reader.read_next();
+            const std::string &topic = bag_msg->topic_name;
+
+            // Skip until the final map has information
+            if (final_map.data.empty())
+            {
+
+                if (topic == "/slam/final_map")
+                {
+
+                    // Deserialize to actual PointCloud2 message
+                    rclcpp::SerializedMessage serialized_msg(*bag_msg->serialized_data);
+                    sensor_msgs::msg::PointCloud2 msg;
+                    rclcpp::Serialization<sensor_msgs::msg::PointCloud2> serializer;
+                    serializer.deserialize_message(&serialized_msg, &msg);
+                    // Save to final_map
+                    final_map = msg;
+                }
+                else
+                {
+                    continue;
+                }
+            }
+
+            if (publishers.find(topic) == publishers.end())
+            {
+                auto it = topic_type_map.find(topic);
+                if (it == topic_type_map.end())
+                {
+                    RCLCPP_WARN(node->get_logger(), "Unknown type for topic: %s", topic.c_str());
+                    continue;
+                }
+
+                auto publisher = node->create_generic_publisher(topic, it->second, 10);
+                publishers[topic] = publisher;
+            }
+
+            rclcpp::SerializedMessage msg(*bag_msg->serialized_data);
+            publishers[topic]->publish(msg);
+
+            if (topic == "/rslidar_points")
+            {
+                // Spin until /perception/map is received
+                auto start = std::chrono::steady_clock::now();
+                int kTimeOut = 10;
+                while (!map_received &&
+                       std::chrono::steady_clock::now() - start < std::chrono::seconds(kTimeOut))
+                {
+                    executor.spin_some();
+                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                }
+
+                if (!map_received)
+                {
+                    FAIL() << "Timeout waiting for /perception/map response.";
+                }
+
+                // Reset
+                map_received = false;
+            }
+        }
+    }
 };
 
-TEST_F(PerceptionTest, FilterAndPublishMcapRosbagWithMapWait)
+TEST_F(PerceptionTest, PerceptionAccuracyTest)
 {
-  std::string package_share_directory = ament_index_cpp::get_package_share_directory("perception_tests");
-  std::string rosbag_path = package_share_directory + "/data/cartuja.mcap";
-  try
-  {
-    play_rosbag(rosbag_path);
-  }
-  catch (const std::exception &e)
-  {
-    FAIL() << "Exception caught during rosbag playback: " << e.what();
-  }
-  catch (...)
-  {
-    FAIL() << "Unknown exception caught during rosbag playback.";
-  }
+    std::string package_share_directory = ament_index_cpp::get_package_share_directory("perception_tests");
+    std::string rosbag_path = package_share_directory + "/data/cartuja.mcap";
+    try
+    {
+        play_rosbag(rosbag_path);
+    }
+    catch (const std::exception &e)
+    {
+        FAIL() << "Exception caught during rosbag playback: " << e.what();
+    }
+    catch (...)
+    {
+        FAIL() << "Unknown exception caught during rosbag playback.";
+    }
+
+    double mean_detected_accuracy = total_detected_accuracy / evaluation_count;
+    double mean_expected_accuracy = total_expected_accuracy / evaluation_count;
+
+    RCLCPP_INFO(node->get_logger(), "======FINAL DATA======");
+    RCLCPP_INFO(node->get_logger(), "Mean detected accuracy: %.2f%%", mean_detected_accuracy * 100);
+    RCLCPP_INFO(node->get_logger(), "Mean expected accuracy: %.2f%%", mean_expected_accuracy * 100);
+
+    ASSERT_GE(mean_detected_accuracy, 0.9) << "Mean detection accuracy too low!";
+    ASSERT_GE(mean_expected_accuracy, 0.4) << "Mean expected accuracy too low!";
 }
 
 int main(int argc, char **argv)
 {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }
