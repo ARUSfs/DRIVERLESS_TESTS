@@ -30,6 +30,10 @@
 
 #include <pcl/kdtree/kdtree_flann.h>
 
+#include <cstdlib>
+#include <thread>
+#include <chrono>
+
 class PerceptionTest : public ::testing::Test
 {
 protected:
@@ -54,6 +58,8 @@ protected:
     {
 
         rclcpp::init(0, nullptr);
+
+        launch_perception();
         // Create a test node
         node = std::make_shared<rclcpp::Node>("rosbag_playback_test");
 
@@ -98,7 +104,41 @@ protected:
 
     void TearDown() override
     {
+        kill_perception();
         rclcpp::shutdown();
+    }
+
+    pid_t perception_launch_pid = -1;
+
+    void launch_perception()
+    {
+        perception_launch_pid = fork();
+        if (perception_launch_pid == 0)
+        {
+            // Child process: run ros2 launch
+            execlp("ros2", "ros2", "launch", "perception", "perception_launch.py", (char *)nullptr);
+            std::cerr << "Failed to launch perception node\n";
+            std::_Exit(EXIT_FAILURE); // ensure child exits if execlp fails
+        }
+        else if (perception_launch_pid < 0)
+        {
+            FAIL() << "Failed to fork for launching perception node";
+        }
+        else
+        {
+            // Parent process: give it time to start
+            std::this_thread::sleep_for(std::chrono::seconds(3));
+        }
+    }
+
+    void kill_perception()
+    {
+        if (perception_launch_pid > 0)
+        {
+            kill(perception_launch_pid, SIGINT);        // send CTRL+C equivalent
+            waitpid(perception_launch_pid, nullptr, 0); // wait for clean shutdown
+            perception_launch_pid = -1;
+        }
     }
 
     void perception_callback(sensor_msgs::msg::PointCloud2 detected_cones)
