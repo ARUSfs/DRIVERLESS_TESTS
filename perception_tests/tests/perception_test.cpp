@@ -16,6 +16,7 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/filters/passthrough.h>
 
 #include <memory>
 #include <unordered_map>
@@ -34,7 +35,6 @@
 #include <thread>
 #include <chrono>
 
-// TODO: cambiar croppign a radio
 class PerceptionTest : public ::testing::Test
 {
 protected:
@@ -239,25 +239,37 @@ protected:
 
     void cropping(sensor_msgs::msg::PointCloud2 &transformed_cloud)
     {
-        // Configure the cropping filter
-
-        double Mx = 30;
-        double My = 15;
-        double Mz = 0.5;
-
+        // Convert ROS msg to PCL cloud
         pcl::PointCloud<pcl::PointXYZI>::Ptr pcl_cloud(new pcl::PointCloud<pcl::PointXYZI>);
         pcl::fromROSMsg(transformed_cloud, *pcl_cloud);
 
-        pcl::CropBox<pcl::PointXYZI> crop_box_filter;
-        crop_box_filter.setInputCloud(pcl_cloud);
-        crop_box_filter.setMin(Eigen::Vector4f(0, -My, -100.0, 1.0));
-        crop_box_filter.setMax(Eigen::Vector4f(Mx, My, Mz, 1.0));
+        // Cylindrical + angular filtering
+        pcl::PointCloud<pcl::PointXYZI>::Ptr half_cylinder_filtered(new pcl::PointCloud<pcl::PointXYZI>);
+        double radius = 20.0;
 
-        // Store the cropped cloud
-        crop_box_filter.filter(*pcl_cloud);
+        // Angle range in radians (e.g., -90° to +90°)
+        double angle_min = -M_PI / 2; // -90 degrees
+        double angle_max = M_PI / 2;  // +90 degrees
 
-        pcl::toROSMsg(*pcl_cloud, transformed_cloud);
+        for (const auto &point : pcl_cloud->points)
+        {
+            float distance_xy = std::sqrt(point.x * point.x + point.y * point.y);
+            if (distance_xy <= radius)
+            {
+                float angle = std::atan2(point.y, point.x); // angle in XY plane
+                if (angle >= angle_min && angle <= angle_max)
+                {
+                    half_cylinder_filtered->points.push_back(point);
+                }
+            }
+        }
 
+        half_cylinder_filtered->width = half_cylinder_filtered->points.size();
+        half_cylinder_filtered->height = 1;
+        half_cylinder_filtered->is_dense = true;
+
+        // Convert back to ROS msg
+        pcl::toROSMsg(*half_cylinder_filtered, transformed_cloud);
         transformed_cloud.header.frame_id = "rslidar";
         transformed_cloud.header.stamp = node->now();
     }
