@@ -60,11 +60,24 @@ protected:
 
     // Configuration
 
-    double kDistanceThreshold = 0.75;
+    double kDistanceThreshold = 0.75; // meters
     double kMinExpectedAccuracy = 0.4;
     double kMinDetectedAccuracy = 0.9;
+    double kCroppingRadius = 20.0; // meters
 
-    void SetUp() override
+    std::string kPerceptionPackage = "perception";
+    std::string kPerceptionLaunch = "perception_launch.py";
+
+    std::string kLidarPointsTopic = "/rslidar_points";
+    std::string kPerceptionMapTopic = "/perception/map";
+    std::string kFinalMapTopic = "/slam/final_map";
+
+    std::string kLidarFrame = "rslidar";
+    std::string kWorldFrame = "arussim/world";
+    std::string kVehicleFrame = "slam/vehicle";
+
+    void
+    SetUp() override
     {
 
         rclcpp::init(0, nullptr);
@@ -80,7 +93,7 @@ protected:
 
         // Set up a subscription to /perception/map
         map_subscription = node->create_subscription<sensor_msgs::msg::PointCloud2>(
-            "/perception/map",
+            kPerceptionMapTopic.c_str(),
             10,
             std::bind(&PerceptionTest::perception_callback, this, std::placeholders::_1));
 
@@ -96,8 +109,8 @@ protected:
         // Create static transform: slam/vehicle → rslidar
         geometry_msgs::msg::TransformStamped static_transform;
         static_transform.header.stamp = node->now();
-        static_transform.header.frame_id = "slam/vehicle";
-        static_transform.child_frame_id = "rslidar";
+        static_transform.header.frame_id = kVehicleFrame.c_str();
+        static_transform.child_frame_id = kLidarFrame.c_str();
 
         // Set the relative position of rslidar on the vehicle (example values)
         static_transform.transform.translation.x = 1.5;
@@ -126,7 +139,7 @@ protected:
         if (perception_launch_pid == 0)
         {
             // Child process: run ros2 launch
-            execlp("ros2", "ros2", "launch", "perception", "perception_launch.py", (char *)nullptr);
+            execlp("ros2", "ros2", "launch", kPerceptionPackage.c_str(), kPerceptionLaunch.c_str(), (char *)nullptr);
             std::cerr << "Failed to launch perception node\n";
             std::_Exit(EXIT_FAILURE);
         }
@@ -165,7 +178,7 @@ protected:
         try
         {
             geometry_msgs::msg::TransformStamped transform_stamped =
-                tf_buffer->lookupTransform("rslidar", "arussim/world", time_of_last_lidar_message, tf2::durationFromSec(1.0));
+                tf_buffer->lookupTransform(kLidarFrame.c_str(), kWorldFrame.c_str(), time_of_last_lidar_message, tf2::durationFromSec(1.0));
 
             sensor_msgs::msg::PointCloud2 transformed_cloud;
             tf2::doTransform(final_map, transformed_cloud, transform_stamped);
@@ -245,7 +258,6 @@ protected:
 
         // Cylindrical + angular filtering
         pcl::PointCloud<pcl::PointXYZI>::Ptr half_cylinder_filtered(new pcl::PointCloud<pcl::PointXYZI>);
-        double radius = 20.0;
 
         // Angle range in radians (e.g., -90° to +90°)
         double angle_min = -M_PI / 2; // -90 degrees
@@ -254,7 +266,7 @@ protected:
         for (const auto &point : pcl_cloud->points)
         {
             float distance_xy = std::sqrt(point.x * point.x + point.y * point.y);
-            if (distance_xy <= radius)
+            if (distance_xy <= kCroppingRadius)
             {
                 float angle = std::atan2(point.y, point.x); // angle in XY plane
                 if (angle >= angle_min && angle <= angle_max)
@@ -309,7 +321,7 @@ protected:
             if (final_map.data.empty())
             {
 
-                if (topic == "/slam/final_map")
+                if (topic == kFinalMapTopic.c_str())
                 {
 
                     // Deserialize to actual PointCloud2 message
@@ -342,7 +354,7 @@ protected:
             rclcpp::SerializedMessage msg(*bag_msg->serialized_data);
             publishers[topic]->publish(msg);
 
-            if (topic == "/rslidar_points")
+            if (topic == kLidarPointsTopic.c_str())
             {
                 time_of_last_lidar_message = rclcpp::Time(0);
                 // Spin until /perception/map is received
