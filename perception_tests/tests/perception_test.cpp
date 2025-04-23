@@ -403,6 +403,16 @@ TEST_P(PerceptionTest, PerceptionAccuracyTest)
     RCLCPP_INFO(node->get_logger(), "Mean detected accuracy: %.2f%%", mean_detected_accuracy * 100);
     RCLCPP_INFO(node->get_logger(), "Mean expected accuracy: %.2f%%", mean_expected_accuracy * 100);
 
+    std::ostringstream stream_mean_detected_accuracy;
+    stream_mean_detected_accuracy << std::fixed << std::setprecision(5) << mean_detected_accuracy;
+
+    std::ostringstream stream_mean_expected_accuracy;
+    stream_mean_expected_accuracy << std::fixed << std::setprecision(5) << mean_expected_accuracy;
+
+    ::testing::Test::RecordProperty("MeanDetectedAccuracy", stream_mean_detected_accuracy.str());
+    ::testing::Test::RecordProperty("MeanExpectedAccuracy", stream_mean_expected_accuracy.str());
+
+
     ASSERT_GE(mean_detected_accuracy, kMinDetectedAccuracy) << "Mean detection accuracy too low!";
     ASSERT_GE(mean_expected_accuracy, kMinExpectedAccuracy) << "Mean expected accuracy too low!";
 }
