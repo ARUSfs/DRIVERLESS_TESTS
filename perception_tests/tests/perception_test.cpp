@@ -34,6 +34,7 @@
 #include <thread>
 #include <chrono>
 
+// TODO: cambiar croppign a radio
 class PerceptionTest : public ::testing::Test
 {
 protected:
@@ -54,6 +55,8 @@ protected:
     double total_detected_accuracy = 0.0;
     double total_expected_accuracy = 0.0;
     int evaluation_count = 0;
+
+    rclcpp::Time time_of_last_lidar_message;
 
     // Configuration
 
@@ -162,7 +165,7 @@ protected:
         try
         {
             geometry_msgs::msg::TransformStamped transform_stamped =
-                tf_buffer->lookupTransform("rslidar", "arussim/world", rclcpp::Time(0), tf2::durationFromSec(1.0));
+                tf_buffer->lookupTransform("rslidar", "arussim/world", time_of_last_lidar_message, tf2::durationFromSec(1.0));
 
             sensor_msgs::msg::PointCloud2 transformed_cloud;
             tf2::doTransform(final_map, transformed_cloud, transform_stamped);
@@ -329,6 +332,7 @@ protected:
 
             if (topic == "/rslidar_points")
             {
+                time_of_last_lidar_message = rclcpp::Time(0);
                 // Spin until /perception/map is received
                 auto start = std::chrono::steady_clock::now();
                 int kTimeOut = 10;
