@@ -35,7 +35,7 @@
 #include <thread>
 #include <chrono>
 
-class PerceptionTest : public ::testing::Test
+class PerceptionTest : public ::testing::TestWithParam<std::string>
 {
 protected:
     // Variables
@@ -379,10 +379,10 @@ protected:
     }
 };
 
-TEST_F(PerceptionTest, PerceptionAccuracyTest)
+TEST_P(PerceptionTest, PerceptionAccuracyTest)
 {
     std::string package_share_directory = ament_index_cpp::get_package_share_directory("perception_tests");
-    std::string rosbag_path = package_share_directory + "/data/cartuja.mcap";
+    std::string rosbag_path = package_share_directory + "/data/" + GetParam();
     try
     {
         play_rosbag(rosbag_path);
@@ -406,6 +406,12 @@ TEST_F(PerceptionTest, PerceptionAccuracyTest)
     ASSERT_GE(mean_detected_accuracy, kMinDetectedAccuracy) << "Mean detection accuracy too low!";
     ASSERT_GE(mean_expected_accuracy, kMinExpectedAccuracy) << "Mean expected accuracy too low!";
 }
+
+INSTANTIATE_TEST_SUITE_P(
+    AddCases,       // Instance name
+    PerceptionTest, // Test suite name
+    ::testing::Values(
+        "cartuja.mcap"));
 
 int main(int argc, char **argv)
 {
