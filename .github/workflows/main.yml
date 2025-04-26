@@ -1,5 +1,10 @@
 name: Build and Test DRIVERLESS
 
+permissions:
+  contents: read
+  packages: read
+
+
 on:
   pull_request:
 
@@ -31,10 +36,12 @@ jobs:
 
     - name: Build workspace
       run: |
+        cd /workspace
         colcon build
 
     - name: Source and run tests
       run: |
+        cd /workspace
         source /workspace/install/setup.bash
         colcon test
         colcon test-result --all
