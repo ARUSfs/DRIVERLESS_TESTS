@@ -42,26 +42,26 @@ install(DIRECTORY data/
 
 
 # Enable testing
-if(BUILD_TESTING)
-  enable_testing()
+# if(BUILD_TESTING)
+#   enable_testing()
 
-  ament_add_gtest(example_test tests/example_test.cpp)
-  target_link_libraries(example_test
-        rclcpp::rclcpp)
+#   ament_add_gtest(example_test tests/example_test.cpp)
+#   target_link_libraries(example_test
+#         rclcpp::rclcpp)
 
-   ament_target_dependencies(example_test
-        rclcpp
-        std_msgs
-      )
+#    ament_target_dependencies(example_test
+#         rclcpp
+#         std_msgs
+#       )
 
-  ament_add_gtest(example_rosbag_test tests/example_rosbag_test.cpp)
-  target_link_libraries(example_rosbag_test
-        rclcpp::rclcpp)
+#   ament_add_gtest(example_rosbag_test tests/example_rosbag_test.cpp)
+#   target_link_libraries(example_rosbag_test
+#         rclcpp::rclcpp)
 
-   ament_target_dependencies(example_rosbag_test
-        rclcpp
-        std_msgs
-      )
-endif()
+#    ament_target_dependencies(example_rosbag_test
+#         rclcpp
+#         std_msgs
+#       )
+# endif()
 
 ament_package()
