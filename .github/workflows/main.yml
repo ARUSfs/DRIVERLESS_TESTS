@@ -35,12 +35,14 @@ jobs:
         git clone https://github.com/ARUSfs/DRIVERLESS_TESTS.git
 
     - name: Build workspace
+      shell: bash
       run: |
         source /opt/ros/humble/setup.bash
         cd /workspace
         colcon build
 
     - name: Source and run tests
+      shell: bash
       run: |
         source /opt/ros/humble/setup.bash
         cd /workspace
