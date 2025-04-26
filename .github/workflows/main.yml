@@ -36,11 +36,13 @@ jobs:
 
     - name: Build workspace
       run: |
+        source /opt/ros/humble/setup.bash
         cd /workspace
         colcon build
 
     - name: Source and run tests
       run: |
+        source /opt/ros/humble/setup.bash
         cd /workspace
         source /workspace/install/setup.bash
         colcon test
