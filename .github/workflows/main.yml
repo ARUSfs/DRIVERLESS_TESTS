@@ -9,6 +9,10 @@ jobs:
 
     container:
       image: ghcr.io/arusfs/arus:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
 
 
     steps:
