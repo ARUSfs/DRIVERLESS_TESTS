@@ -418,7 +418,7 @@ TEST_P(PerceptionTest, PerceptionAccuracyTest)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    Perception,       // Instance name
+    Perception,     // Instance name
     PerceptionTest, // Test suite name
     ::testing::Values(
         "cartuja.mcap"));
