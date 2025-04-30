@@ -108,7 +108,7 @@ def generate_accuracy_pie_charts(properties, test_number, charts_path):
         # Prepare data for pie chart
         labels = [f"{key} ({value*100:.2f}%)", f"Other ({remaining*100:.2f}%)"]
         sizes = [value, remaining]
-        colors = ['#66b3ff', '#ff9999']
+        colors = ['#5bf092', '#ff9999']
 
         plt.figure(figsize=(3, 3))
         plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=colors)
