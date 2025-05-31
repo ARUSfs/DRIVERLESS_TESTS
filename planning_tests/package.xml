@@ -12,6 +12,7 @@
   <depend>rclcpp</depend>
   <depend>rosbag2_cpp</depend>
   <depend>rosbag2_storage</depend>
+  <build_depend>common_msgs</build_depend>
 
   <build_depend>std_msgs</build_depend>
 
