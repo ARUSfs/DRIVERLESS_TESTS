@@ -40,7 +40,7 @@ protected:
     int timeout_count = 0;
 
     double kMinDetectedAccuracy = 0.9;
-    double kDistanceThreshold = 0.4;
+    double kDistanceThreshold = 2.5;
     std::string kPathPlanningPackage = "path_planning";
     std::string kPathPlanningLaunch = "path_planning_launch.py";
     std::string kTrayectoryTopic = "/path_planning/trajectory";
@@ -206,8 +206,9 @@ protected:
                 publishers[topic] = publisher;
             }
 
-             rclcpp::SerializedMessage msg(*bag_msg->serialized_data);
+            rclcpp::SerializedMessage msg(*bag_msg->serialized_data);
             publishers[topic]->publish(msg);
+            executor.spin_some();
 
             if (topic == kPerceptionMapTopic.c_str())
             {
@@ -224,7 +225,7 @@ protected:
                 {
                   timeout_count++;
                   RCLCPP_INFO(node->get_logger(), "Timed out!");
-                  if(timeout_count >= 5){
+                  if(timeout_count >= 2){
 
                     timeout_count = 0;
                     RCLCPP_INFO(node->get_logger(), "Timed out many times!");
@@ -289,9 +290,11 @@ protected:
         RCLCPP_WARN(node->get_logger(), "No trajectory message found in the rosbag.");
     }
     else
-    {
-        RCLCPP_INFO(node->get_logger(), "Last trajectory message successfully loaded.");
-    }
+{
+    RCLCPP_INFO(node->get_logger(), "Last trajectory message successfully loaded.");
+    RCLCPP_INFO(node->get_logger(), "Trajectory contains %zu points.", last_trajectory_msg->points.size());
+}
+
 
     return last_trajectory_msg;
 }
