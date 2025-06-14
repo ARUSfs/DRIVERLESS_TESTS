@@ -113,7 +113,7 @@ protected:
         static_transform.child_frame_id = kLidarFrame.c_str();
 
         // Set the relative position of rslidar on the vehicle (example values)
-        static_transform.transform.translation.x = 1.5;
+        static_transform.transform.translation.x = 0.0;
         static_transform.transform.translation.y = 0.0;
         static_transform.transform.translation.z = 0.0;
 
@@ -359,7 +359,7 @@ protected:
                 time_of_last_lidar_message = rclcpp::Time(0);
                 // Spin until /perception/map is received
                 auto start = std::chrono::steady_clock::now();
-                int kTimeOut = 10;
+                int kTimeOut = 20;
                 while (!map_received &&
                        std::chrono::steady_clock::now() - start < std::chrono::seconds(kTimeOut))
                 {

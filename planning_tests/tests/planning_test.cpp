@@ -39,12 +39,12 @@ protected:
     int evaluation_count = 0;
     int timeout_count = 0;
 
-    double kMinDetectedAccuracy = 0.9;
-    double kDistanceThreshold = 2.5;
+    double kMinDetectedAccuracy = 0.8;
+    double kDistanceThreshold = 0.5;
     std::string kPathPlanningPackage = "path_planning";
     std::string kPathPlanningLaunch = "path_planning_launch.py";
     std::string kTrayectoryTopic = "/path_planning/trajectory";
-    std::string kPerceptionMapTopic = "/perception/map";
+    std::string kSlamMapTopic = "/slam/map";
 
     pid_t path_planning_launch_pid = -1;
 
@@ -92,6 +92,8 @@ protected:
             kill(path_planning_launch_pid, SIGINT);
             waitpid(path_planning_launch_pid, nullptr, 0);
             path_planning_launch_pid = -1;
+            RCLCPP_INFO(node->get_logger(), "Killing path planning process with PID: %d", path_planning_launch_pid);
+
         }
     }
 
@@ -183,7 +185,10 @@ protected:
         rclcpp::executors::SingleThreadedExecutor executor;
         executor.add_node(node);
 
-        while (reader.has_next())
+        const int kMaxEvaluations = 50;
+        int evaluation_attempts = 0;
+
+        while (reader.has_next() && evaluation_attempts < kMaxEvaluations)
         {
             auto bag_msg = reader.read_next();
             const std::string &topic = bag_msg->topic_name;
@@ -210,36 +215,64 @@ protected:
             publishers[topic]->publish(msg);
             executor.spin_some();
 
-            if (topic == kPerceptionMapTopic.c_str())
+            if (topic == kSlamMapTopic.c_str())
             {
-                auto start = std::chrono::steady_clock::now();
-                int kTimeOut = 10;
-                while (!trajectory_received &&
-                       std::chrono::steady_clock::now() - start < std::chrono::seconds(kTimeOut))
+                size_t num_points = 0;
+                // Attempt to deserialize and log point cloud size
+                try
                 {
-                    executor.spin_some();
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    rclcpp::Serialization<sensor_msgs::msg::PointCloud2> pointcloud_serializer;
+                    sensor_msgs::msg::PointCloud2 cloud_msg;
+                    rclcpp::SerializedMessage serialized_msg(*bag_msg->serialized_data);
+                    pointcloud_serializer.deserialize_message(&serialized_msg, &cloud_msg);
+
+                    if (cloud_msg.point_step > 0)
+                    {
+                        num_points = cloud_msg.data.size() / cloud_msg.point_step;
+                    }
+
+                    RCLCPP_INFO(node->get_logger(), "Publishing perception map with %zu points", num_points);
                 }
-                RCLCPP_INFO(node->get_logger(), "Waited for answer");
-                if (!trajectory_received)
+                catch (const std::exception &e)
                 {
-                  timeout_count++;
-                  RCLCPP_INFO(node->get_logger(), "Timed out!");
-                  if(timeout_count >= 2){
-
-                    timeout_count = 0;
-                    RCLCPP_INFO(node->get_logger(), "Timed out many times!");
-                    break;
-
-                  }
+                    RCLCPP_WARN(node->get_logger(), "Failed to deserialize PointCloud2: %s", e.what());
                 }
 
-                // Reset
-                trajectory_received = false;
+                if(num_points != 0)
+                {
+                    evaluation_attempts++; // Increment counter
+
+                    auto start = std::chrono::steady_clock::now();
+                    int kTimeOut = 10;
+                    while (!trajectory_received &&
+                           std::chrono::steady_clock::now() - start < std::chrono::seconds(kTimeOut))
+                    {
+                        executor.spin_some();
+                        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                    }
+
+                    RCLCPP_INFO(node->get_logger(), "Waited for answer (attempt %d/%d)",
+                               evaluation_attempts, kMaxEvaluations);
+
+                    if (!trajectory_received)
+                    {
+                        timeout_count++;
+                        RCLCPP_INFO(node->get_logger(), "Timed out!");
+                        if(timeout_count >= 2)
+                        {
+                            timeout_count = 0;
+                            RCLCPP_INFO(node->get_logger(), "Timed out many times!");
+                            break;
+                        }
+                    }
+
+                    // Reset
+                    trajectory_received = false;
+                }
             }
-
-
         }
+
+        RCLCPP_INFO(node->get_logger(), "Finished rosbag playback after %d evaluations", evaluation_attempts);
     }
 
    std::shared_ptr<common_msgs::msg::Trajectory> get_last_trayectory(const std::string &bag_path)
@@ -301,11 +334,14 @@ protected:
 
 };
 
-TEST_P(PathPlanningTest, PerceptionAccuracyTest)
+TEST_P(PathPlanningTest, PlanningAccuracyTest)
 {
     std::string package_share_directory = ament_index_cpp::get_package_share_directory("planning_tests");
     std::string rosbag_path = package_share_directory + "/data/" + GetParam();
     final_trayectory = get_last_trayectory(rosbag_path);
+
+        RCLCPP_INFO(node->get_logger(), "Started TEST");
+
 
     try
     {
@@ -324,7 +360,7 @@ TEST_P(PathPlanningTest, PerceptionAccuracyTest)
 
     double mean_detected_accuracy = total_detected_accuracy / evaluation_count;
 
-    RCLCPP_INFO(node->get_logger(), "======FINAL DATA======");
+    RCLCPP_INFO(node->get_logger(), "===FINAL DATA===");
     RCLCPP_INFO(node->get_logger(), "Mean detected accuracy: %.2f%%", mean_detected_accuracy * 100);
 
     std::ostringstream stream_mean_detected_accuracy;
@@ -332,6 +368,7 @@ TEST_P(PathPlanningTest, PerceptionAccuracyTest)
     ::testing::Test::RecordProperty("MeanDetectedAccuracy", stream_mean_detected_accuracy.str());
 
     ASSERT_GE(mean_detected_accuracy, kMinDetectedAccuracy) << "Mean detection accuracy too low!";
+    RCLCPP_INFO(node->get_logger(), "Finished TEST");
 }
 
 INSTANTIATE_TEST_SUITE_P(

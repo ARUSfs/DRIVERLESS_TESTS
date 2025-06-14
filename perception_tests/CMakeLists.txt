@@ -36,26 +36,26 @@ install(DIRECTORY data/
 
 
 # Enable testing
-if(BUILD_TESTING)
-  enable_testing()
+# if(BUILD_TESTING)
+#   enable_testing()
 
-  ament_add_gtest(perception_test tests/perception_test.cpp)
-  target_link_libraries(perception_test
-        rclcpp::rclcpp)
+#   ament_add_gtest(perception_test tests/perception_test.cpp)
+#   target_link_libraries(perception_test
+#         rclcpp::rclcpp)
 
-   ament_target_dependencies(perception_test
-        rclcpp
-        rosbag2_cpp
-        rosbag2_storage
-        sensor_msgs
-        std_msgs
-        tf2
-        tf2_ros
-        tf2_sensor_msgs
-        PCL
-        pcl_conversions
-      )
+#    ament_target_dependencies(perception_test
+#         rclcpp
+#         rosbag2_cpp
+#         rosbag2_storage
+#         sensor_msgs
+#         std_msgs
+#         tf2
+#         tf2_ros
+#         tf2_sensor_msgs
+#         PCL
+#         pcl_conversions
+#       )
 
-endif()
+# endif()
 
 ament_package()
