@@ -47,7 +47,15 @@ RUN apt-get install -y \
     libsuitesparse-dev \
     qtdeclarative5-dev \
     qt5-qmake \
-    libqglviewer-dev-qt5
+    libqglviewer-dev-qt5 \
+    g++ \
+    wget \
+    unzip \
+    build-essential \
+    libopencv-dev \
+    libtclap-dev \
+    libmagic-dev 
+
 
 # Install Python deps
 RUN pip install --no-cache-dir ruamel.yaml colcon-common-extensions
@@ -57,6 +65,30 @@ RUN git clone https://github.com/RainerKuemmerle/g2o.git /tmp/g2o && \
     cd /tmp/g2o && mkdir build && cd build && \
     cmake .. && make -j$(nproc) && make install && ldconfig && \
     rm -rf /tmp/g2o
+
+# Install OpenCV
+RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.x.zip && \
+    unzip opencv.zip && rm opencv.zip && \
+    cd opencv-4.x && mkdir build && cd build && \
+    cmake  ../opencv-4.x && cmake --build .
+
+# Update cmake 
+RUN wget https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2.tar.gz && \
+    tar -xvf cmake-4.1.2.tar.gz && cd cmake-4.1.2 && ./bootstrap --prefix=$HOME/cmake-install && \
+    make -j$(nproc) && make install && export PATH=$HOME/cmake-install/bin:$PATH && \
+    export CMAKE_PREFIX_PATH=$HOME/cmake-install:$CMAKE_PREFIX_PATH 
+
+RUN git clone https://codeberg.org/CCodeRun/darknet.git /tmp/darknet && \
+    cd /tmp/darknet && mkdir build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    make -j$(nproc) && sudo dpkg -i darknet-*.deb && \
+    rm -rf /tmp/darknet
+
+RUN git clone https://github.com/stephanecharette/DarkHelp.git /tmp/DarkHelp && \
+    cd /tmp/DarkHelp && mkdir build && cd build && \
+    cmake -DCMAKE_BUILD_TYPE=Release .. && \
+    make -j$(nproc) && make package && dpkg -i darkhelp*.deb \
+    rm -rf /tmp/DarkHelp
 
 
 # Source built workspace
