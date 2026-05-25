@@ -21,15 +21,7 @@ find_package(PCL REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(common_msgs REQUIRED)
 
-
-# Optional dependencies (uncomment if needed)
-
-# include_directories(include)
-
-# install(DIRECTORY include/
-#   DESTINATION include/
-# )
-
+# Instalar el directorio data para que GetParam() encuentre el .mcap en share/
 install(DIRECTORY data/
   DESTINATION share/${PROJECT_NAME}/data)
 
@@ -39,23 +31,32 @@ install(DIRECTORY data/
 if(BUILD_TESTING)
   enable_testing()
 
+  # Añadimos el ejecutable del test
   ament_add_gtest(planning_test tests/planning_test.cpp)
-  target_link_libraries(planning_test
-        rclcpp::rclcpp)
+  
+  # ¡CRUCIAL!: Decirle a CMake dónde buscar tus archivos .hpp
+  target_include_directories(planning_test PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/${PROJECT_NAME}>
+  )
 
-   ament_target_dependencies(planning_test
-        rclcpp
-        rosbag2_cpp
-        rosbag2_storage
-        sensor_msgs
-        std_msgs
-        tf2
-        tf2_ros
-        tf2_sensor_msgs
-        PCL
-        pcl_conversions
-        common_msgs
-      )
+  target_link_libraries(planning_test
+    rclcpp::rclcpp
+  )
+
+  ament_target_dependencies(planning_test
+    rclcpp
+    rosbag2_cpp
+    rosbag2_storage
+    sensor_msgs
+    std_msgs
+    tf2
+    tf2_ros
+    tf2_sensor_msgs
+    PCL
+    pcl_conversions
+    common_msgs
+  )
 
 endif()
 

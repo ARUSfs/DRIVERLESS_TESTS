@@ -1,0 +1,21 @@
+{
+    "ROS2.distro": "humble",
+    "python.autoComplete.extraPaths": [
+        "/home/javi/workspace/install/rslidar_msg/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/hesai_ros_driver/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/common_msgs/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/astra_camera_msgs/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/arussim_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/javi/workspace/install/rslidar_msg/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/hesai_ros_driver/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/common_msgs/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/astra_camera_msgs/local/lib/python3.10/dist-packages",
+        "/home/javi/workspace/install/arussim_msgs/local/lib/python3.10/dist-packages",
+        "/opt/ros/humble/lib/python3.10/site-packages",
+        "/opt/ros/humble/local/lib/python3.10/dist-packages"
+    ]
+}

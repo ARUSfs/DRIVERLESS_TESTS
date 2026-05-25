@@ -1,1 +1,3 @@
 *.pyc
+.vscode/browse.vc.db
+*.mcap
