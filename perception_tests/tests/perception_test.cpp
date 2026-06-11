@@ -1,6 +1,5 @@
 // src/perception_test.cpp
 #include "perception_tests/perception_test.hpp"
-#include "perception/PointXYZIRingTime.h"
 
 #include <rclcpp/serialization.hpp>
 #include <pcl_conversions/pcl_conversions.h>
@@ -460,7 +459,7 @@ TEST_P(PerceptionTest, PerceptionAccuracyTest)
     }
     catch (const std::exception &e)
     {
-        FAIL() << "Exception during rosbag playback: " << e.what();
+        FAIL() << "Exception during rosbag playback: " << e.what() << " Rosbag test: " << rosbag_path;
     }
 
     double mean_detected_accuracy = total_detected_accuracy / std::max(1, evaluation_count);
@@ -483,7 +482,7 @@ TEST_P(PerceptionTest, PerceptionAccuracyTest)
     ASSERT_GE(mean_expected_accuracy, cfg.kMinExpectedAccuracy) << "Mean expected accuracy too low!";
 }
 
-INSTANTIATE_TEST_SUITE_P(Perception, PerceptionTest, ::testing::Values("autocross_bag_2026-03-06_19-25-23.mcap"));
+INSTANTIATE_TEST_SUITE_P(Perception, PerceptionTest, ::testing::Values("trackdrive_bag_2026-04-10_15-37-47.mcap"));
 
 int main(int argc, char **argv)
 {

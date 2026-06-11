@@ -2,7 +2,6 @@
 #pragma once
 #include <string>
 #include <rclcpp/rclcpp.hpp>
-#include "perception/PointXYZIRingTime.h"
 
 namespace perception_tests
 {
@@ -12,7 +11,7 @@ struct PerceptionConfig
     double kDistanceThreshold = 1; // m
     double kMinExpectedAccuracy = 0.9;
     double kMinDetectedAccuracy = 0.9;
-    double kCroppingRadius = 20.0; // m
+    double kCroppingRadius = 40.0; // m
 
     std::string kPerceptionPackage = "perception";
     std::string kPerceptionLaunch = "perception_launch.py";

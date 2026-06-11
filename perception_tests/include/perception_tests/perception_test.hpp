@@ -7,9 +7,7 @@
 #include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2_ros/buffer.h>
-
 #include "perception_test_config.hpp"
-#include "perception/PointXYZIRingTime.h"
 
 namespace perception_tests
 {

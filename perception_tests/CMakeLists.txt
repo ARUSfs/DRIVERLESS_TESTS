@@ -35,6 +35,10 @@ include_directories(
   ${PCL_INCLUDE_DIRS}
 )
 
+install(DIRECTORY data/
+  DESTINATION share/${PROJECT_NAME}/data)
+
+
 # -------------------
 # Add gtest
 # -------------------
