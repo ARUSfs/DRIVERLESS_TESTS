@@ -110,7 +110,7 @@ def generate_accuracy_pie_charts(properties, test_number, charts_path):
         sizes = [value, remaining]
         colors = ['#5bf092', '#ff9999']
 
-        plt.figure(figsize=(3, 3))
+        plt.figure(figsize=(10, 10))
         plt.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140, colors=colors)
         plt.title(f"{key} Breakdown for Test {test_number}")
 

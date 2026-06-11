@@ -1,95 +1,165 @@
-FROM ubuntu:22.04
+#--------------------------------------------------
+# @file   Dockerfile
+# @author Arturo Redondo Naranjo
+# @date   20-12-2025
+# @brief  Dockerfile for ARUS Driverless Environment
+#--------------------------------------------------
 
-# Set environment variables
-ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG=en_US.UTF-8
-ENV LC_ALL=en_US.UTF-8
+#--------------------------------------------------
+# Previous installation steps
+#--------------------------------------------------
 
-# Create workspace early
-RUN mkdir -p /workspace/src
-WORKDIR /workspace
+# ROS2 Humble with Ubuntu 22.04
+FROM osrf/ros:humble-desktop-full
 
-# Install base dependencies
-RUN apt-get update && apt-get install -y \
-    software-properties-common \
-    curl \
-    git \
-    cmake \
-    build-essential \
-    locales \
-    gnupg2 \
-    python3 \
-    python3-pip && \
-    locale-gen en_US en_US.UTF-8 && \
-    update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8 && \
-    add-apt-repository universe && \
-    apt-get update
+# Avoids config interfaces 
+SHELL ["/bin/bash", "-c"]
 
-# Install ROS2 Humble
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg && \
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
-    > /etc/apt/sources.list.d/ros2.list && \
-    apt-get update && \
-    apt-get install -y ros-humble-desktop
+# Initial update and upgrade
+RUN apt-get update
 
-# Install ROS-dependent packages
-RUN apt-get install -y \
-    python3-colcon-common-extensions \
-    ros-humble-pcl-ros \
-    ros-humble-rosbag2-storage-mcap
+# Build tools and basic utilities
+RUN apt-get update && apt-get install --install-recommends -y \
+    # Basic utilities
+    apt-utils bash-completion build-essential ccache curl file git nano net-tools tmux unzip wget \
+    # Development tools
+    cmake g++ g++-12 gcc-12 gdb gfortran pkg-config python3-dev python3-pip python3-venv \
+    # ROS 2 and build tools
+    python3-colcon-common-extensions python3-empy ros-dev-tools ros-humble-ament-cmake ros-humble-rmw-cyclonedds-cpp ros-$ROS_DISTRO-rosbag2-storage-mcap \
+    # Image / video libraries
+    libavcodec-dev libavformat-dev libjpeg-dev libpng-dev libswscale-dev libtiff-dev libv4l-dev libx264-dev libxvidcore-dev \
+    # Linear algebra / math libraries
+    libeigen3-dev liblapack-dev libopenblas-dev libopenblas64-0 libopenblas64-0-openmp libopenblas64-openmp-dev libsuitesparse-dev \
+    # Other required libraries
+    libgtk-3-dev libmagic-dev libopencv-dev libpcl-dev libpcap-dev libprotobuf-dev libqglviewer-dev-qt5 libspdlog-dev libtclap-dev nlohmann-json3-dev \
+    # MRPT libraries and apps
+    libmrpt-dev mrpt-apps \
+    # Networking / system utilities
+    dnsmasq hostapd usbutils wireless-tools \
+    # Qt development
+    qt5-qmake qtdeclarative5-dev \
+    # Cleanup
+    && rm -rf /var/lib/apt/lists/*
 
-# Install remaining system dependencies
-RUN apt-get install -y \
-    nlohmann-json3-dev \
-    libpcl-dev \
-    libeigen3-dev \
-    libspdlog-dev \
-    libsuitesparse-dev \
-    qtdeclarative5-dev \
-    qt5-qmake \
-    libqglviewer-dev-qt5 \
-    g++ \
-    wget \
-    unzip \
-    build-essential \
-    libopencv-dev \
-    libtclap-dev \
-    libmagic-dev 
+ENV CC=gcc-12
+ENV CXX=g++-12
+ENV RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
 
+# Fuzzy find tool for commandline
+RUN git clone --depth 1 https://github.com/junegunn/fzf.git /root/.fzf \
+    && /root/.fzf/install --all
 
-# Install Python deps
-RUN pip install --no-cache-dir ruamel.yaml colcon-common-extensions
+#--------------------------------------------------
+# Dependencies
+#--------------------------------------------------
 
-# Clone and build g2o
-RUN git clone https://github.com/RainerKuemmerle/g2o.git /tmp/g2o && \
-    cd /tmp/g2o && mkdir build && cd build && \
-    cmake .. && make -j$(nproc) && make install && ldconfig && \
-    rm -rf /tmp/g2o
+# Directorys
+RUN mkdir -p /root/ARUS_logs
+RUN mkdir -p /root/ARUS_logs/bagfiles /root/ARUS_logs/candumps
+RUN mkdir -p /root/dependencies
+WORKDIR /root/dependencies
 
-# Install OpenCV
-RUN wget -O opencv.zip https://github.com/opencv/opencv/archive/4.x.zip && \
-    unzip opencv.zip && rm opencv.zip && \
-    cd opencv-4.x && mkdir build && cd build && \
-    cmake  ../opencv-4.x && cmake --build .
+# track editor
+RUN python3 -m pip install --no-cache-dir \
+    "numpy==1.23.*" \
+    "ruamel.yaml<0.18"
 
-# Update cmake 
-RUN wget https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2.tar.gz && \
-    tar -xvf cmake-4.1.2.tar.gz && cd cmake-4.1.2 && ./bootstrap --prefix=$HOME/cmake-install && \
-    make -j$(nproc) && make install && export PATH=$HOME/cmake-install/bin:$PATH && \
-    export CMAKE_PREFIX_PATH=$HOME/cmake-install:$CMAKE_PREFIX_PATH 
+# can_interface
+WORKDIR /root/dependencies
+RUN curl -L "https://www.kvaser.com/download/?utm_source=software&utm_ean=7330130980754&utm_status=latest" \
+    -o linuxcan.tar.gz
+RUN tar -xvzf linuxcan.tar.gz
+WORKDIR /root/dependencies/linuxcan/canlib
+RUN make && make install
+WORKDIR /root/dependencies/linuxcan/linlib
+RUN make && make install
 
-RUN git clone https://codeberg.org/CCodeRun/darknet.git /tmp/darknet && \
-    cd /tmp/darknet && mkdir build && cd build && \
-    cmake -DCMAKE_BUILD_TYPE=Release .. && \
-    make -j$(nproc) && sudo dpkg -i darknet-*.deb && \
-    rm -rf /tmp/darknet
+# PCART
+WORKDIR /root/dependencies
+RUN curl -L "https://github.com/foxglove/mcap/releases/download/releases%2Fmcap-cli%2Fv0.0.55/mcap-linux-amd64" \
+    -o mcap-linux-amd64
+RUN chmod +x mcap-linux-amd64
+RUN mv mcap-linux-amd64 /usr/local/bin/mcap
 
-RUN git clone https://github.com/stephanecharette/DarkHelp.git /tmp/DarkHelp && \
-    cd /tmp/DarkHelp && mkdir build && cd build && \
-    cmake -DCMAKE_BUILD_TYPE=Release .. && \
-    make -j$(nproc) && make package && dpkg -i darkhelp*.deb \
-    rm -rf /tmp/DarkHelp
+# Camera
+WORKDIR /root/dependencies
+RUN wget -O opencv-4.x.zip https://github.com/opencv/opencv/archive/4.x.zip 
+RUN unzip opencv-4.x.zip 
+RUN mkdir -p /root/dependencies/opencv-4.x/build
+WORKDIR /root/dependencies/opencv-4.x/build
+RUN cmake .. \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local \
+    && make -j$(nproc) \
+    && make install \
+    && ldconfig
 
+# CMake
+WORKDIR /root/dependencies
+RUN wget https://github.com/Kitware/CMake/releases/download/v4.1.2/cmake-4.1.2.tar.gz \
+    && tar -xvf cmake-4.1.2.tar.gz
+WORKDIR /root/dependencies/cmake-4.1.2
+RUN ./bootstrap --prefix=$HOME/cmake-install \
+    && make -j$(nproc) \
+    && make install
+ENV PATH="/root/cmake-install/bin:${PATH}"
+ENV CMAKE_PREFIX_PATH="/root/cmake-install:${CMAKE_PREFIX_PATH:-}"
 
-# Source built workspace
-ENTRYPOINT ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && exec bash"]
+# Darknet
+WORKDIR /root/dependencies
+RUN git clone https://codeberg.org/CCodeRun/darknet.git
+RUN mkdir -p /root/dependencies/darknet/build
+WORKDIR /root/dependencies/darknet/build
+RUN cmake -DCMAKE_BUILD_TYPE=Release .. \
+    && make -j$(nproc) package \
+    && dpkg -i darknet*.deb \
+    && ldconfig
+
+# Darkhelp
+WORKDIR /root/dependencies
+RUN git clone https://github.com/stephanecharette/DarkHelp.git
+RUN mkdir -p /root/dependencies/DarkHelp/build
+WORKDIR /root/dependencies/DarkHelp/build
+RUN cmake -DCMAKE_BUILD_TYPE=Release .. \
+    && make \
+    && make -j$(nproc) package \
+    && dpkg -i darkhelp*.deb \
+    && ldconfig
+
+# g2o
+WORKDIR /root/dependencies
+RUN git clone https://github.com/RainerKuemmerle/g2o 
+RUN mkdir -p /root/dependencies/g2o/build
+WORKDIR /root/dependencies/g2o/build
+RUN cmake .. \
+    && make \
+    && make install \
+    && ldconfig
+
+# Driverless Code (This will be executed individually once the container is built)
+# RUN git clone git@github.com:ARUSfs/DRIVERLESS2 
+# RUN git clone git@github.com:ARUSfs/ARUSSim
+# git clone -b fix/emx/decoder --single-branch git@github.com:ARUSfs/emx_sdk.git
+# git clone git@github.com:ARUSfs/rslidar_msg.git
+
+#--------------------------------------------------
+# Post installation steps
+#--------------------------------------------------
+ENV PROJECT_ROOT=/root/ws
+ENV WORKSPACE=${PROJECT_ROOT}/src
+
+# Initialize rosdep (for installing ROS package dependencies)
+RUN rosdep init 2>/dev/null || true && rosdep update || true
+
+# Source environment in every new bash session
+RUN echo 'source /opt/ros/humble/setup.bash' >> /root/.bashrc
+
+# Make alias available for all users and all future shells
+RUN echo "alias arussim='ros2 launch arussim arussim_launch.py'" >> /root/.bashrc
+
+# Enable colorful bash prompts 
+RUN sed -i 's/#force_color_prompt=yes/force_color_prompt=yes/' /root/.bashrc
+
+# Set working directory and shell
+WORKDIR ${WORKSPACE}
+CMD ["bash"]

@@ -1,0 +1,32 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${workspaceFolder}/.vscode/browse.vc.db",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/javi/workspace/install/rslidar_msg/include/**",
+        "/home/javi/workspace/install/hesai_ros_driver/include/**",
+        "/home/javi/workspace/install/example_tests/include/**",
+        "/home/javi/workspace/install/common_msgs/include/**",
+        "/home/javi/workspace/install/common_meta/include/**",
+        "/home/javi/workspace/install/astra_camera/include/**",
+        "/home/javi/workspace/install/astra_camera_msgs/include/**",
+        "/home/javi/workspace/install/arussim_msgs/include/**",
+        "/home/javi/workspace/install/arussim/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/javi/workspace/src/DRIVERLESS_TEST/DRIVERLESS_TESTS/example_tests/include/**",
+        "/home/javi/workspace/src/DRIVERLESS_TEST/DRIVERLESS_TESTS/perception_tests/include/**",
+        "/home/javi/workspace/src/DRIVERLESS_TEST/DRIVERLESS_TESTS/planning_tests/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ros2",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++17"
+    }
+  ],
+  "version": 4
+}
